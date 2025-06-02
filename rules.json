@@ -1,0 +1,22 @@
+{
+  "$schema": "./rules.schema.json",
+  "predicate": "all",
+  "rules": [
+    {
+      "field": "from",
+      "predicate": "contains",
+      "value": "tenmiles.com"
+    },
+    {
+      "field": "subject",
+      "predicate": "contains",
+      "value": "Interview"
+    },
+    {
+      "field": "date_received",
+      "predicate": "less_than",
+      "value": "2"
+    }
+  ],
+  "actions": []
+}

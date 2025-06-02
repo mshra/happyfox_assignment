@@ -1,0 +1,13 @@
+[
+  {
+    "adapter": "Debugpy",
+    "label": "Script Debugger",
+    "request": "launch",
+    "subProcess": true,
+    "redirectOutput": true,
+    "program": "${ZED_FILE}",
+    "args": [],
+    "stopOnEntry": false,
+    "cwd": "${ZED_WORKTREE_ROOT}"
+  }
+]

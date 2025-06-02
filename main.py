@@ -1,38 +1,34 @@
 import pprint
 import os.path
 import base64
+import datetime
 
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
+import db
 
 # If modifying these scopes, delete the file token.json.
 SCOPES = ["https://www.googleapis.com/auth/gmail.readonly"]
 
-def print_parts(part):
-    filename = part.get('filename') or 'index.html'
-    data = part['body']['data']
-    mimeType = part['mimeType']
+def extract_metadata(message, msg_id):
+    metadata = {}
 
-    match mimeType:
-        case "text/plain":
-            print(str(base64.b64decode(data), encoding='utf-8'))
-        case "text/html":
-            filepath = os.path.join(os.getcwd(), filename)
+    headers = message['payload']['headers']
 
-            print('saving html to:', filepath)
+    for header in headers:
+        if header['name'] in ["Subject", "From", "Date"]:
+            metadata.update({ header['name']: header['value']})
 
-            with open(filepath, "wb") as f:
-                f.write(base64.urlsafe_b64decode(data))
-        case _:
-            raise Exception(f"Unsupported MIME type: f{mimeType}")
+    db.insert(msg_id, metadata['Subject'], metadata['From'], metadata['Date'])
+    return metadata
 
 def read_message(service, msg_id):
-    parts = service.users().messages().get(userId='me', id=msg_id, format='full').execute()['payload']['parts']
-    for part in parts:
-        print_parts(part)
+    # fetch the metadata of message
+    message = service.users().messages().get(userId='me', id=msg_id, format='metadata').execute()
+    pprint.pp(extract_metadata(message, msg_id))
 
 def main():
   creds = None
@@ -58,7 +54,8 @@ def main():
     service = build("gmail", "v1", credentials=creds)
     messages = service.users().messages().list(userId="me").execute()['messages']
 
-    read_message(service, msg_id=messages[0]['id'])
+    for idx in range(5):
+        read_message(service, msg_id=messages[idx]['id'])
   except HttpError as error:
     print(f"An error occurred: {error}")
 
