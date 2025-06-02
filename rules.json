@@ -18,5 +18,8 @@
       "value": "2"
     }
   ],
-  "actions": []
+  "actions": [
+    { "type": "move_to", "value": "inbox" },
+    { "type": "mark_as_read", "value": "" }
+  ]
 }
