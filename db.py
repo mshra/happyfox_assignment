@@ -11,20 +11,20 @@ cur.execute("""CREATE TABLE IF NOT EXISTS emails(
 )""")
 
 def insert(msg_id: str, subject: str, from_email: str, date: str):
-    cur.execute(
-        "INSERT INTO emails (msg_id, subject, from_email, date) VALUES (?, ?, ?, ?)",
-        (msg_id, subject, from_email, date)
-    )
-    conn.commit()
+    cur.execute("SELECT 1 FROM emails WHERE msg_id = ?", (msg_id,))
+    exists = cur.fetchone()
+    if not exists:
+        cur.execute(
+            "INSERT INTO emails (msg_id, subject, from_email, date) VALUES (?, ?, ?, ?)",
+            (msg_id, subject, from_email, date)
+        )
+        conn.commit()
 
-def get(msg_id: Optional[str]=None):
+def get(msg_id: Optional[str] = None):
     if msg_id is None:
-        cur.execute(
-            "SELECT * FROM emails"
-        ).fetchall()
+        return cur.execute("SELECT * FROM emails").fetchall()
     else:
-        cur.execute(
+        return cur.execute(
             "SELECT * FROM emails WHERE msg_id = ?",
-            msg_id
+            (msg_id,)
         ).fetchone()
-    conn.commit()
