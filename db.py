@@ -7,16 +7,17 @@ cur.execute("""CREATE TABLE IF NOT EXISTS emails(
     msg_id VARCHAR(255) PRIMARY KEY,
     subject VARCHAR(255),
     from_email VARCHAR(255),
-    date VARCHAR(50)
+    date VARCHAR(50),
+    snippet TEXT
 )""")
 
-def insert(msg_id: str, subject: str, from_email: str, date: str):
+def insert(msg_id: str, subject: str, from_email: str, date: str, snippet: str):
     cur.execute("SELECT 1 FROM emails WHERE msg_id = ?", (msg_id,))
     exists = cur.fetchone()
     if not exists:
         cur.execute(
-            "INSERT INTO emails (msg_id, subject, from_email, date) VALUES (?, ?, ?, ?)",
-            (msg_id, subject, from_email, date)
+            "INSERT INTO emails (msg_id, subject, from_email, date, snippet) VALUES (?, ?, ?, ?, ?)",
+            (msg_id, subject, from_email, date, snippet)
         )
         conn.commit()
 
