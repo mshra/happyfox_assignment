@@ -2,6 +2,7 @@ import pprint
 import os.path
 import base64
 import datetime
+import json
 
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
@@ -10,25 +11,111 @@ from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 import db
 
-# If modifying these scopes, delete the file token.json.
-SCOPES = ["https://www.googleapis.com/auth/gmail.readonly"]
+SCOPES = ["https://www.googleapis.com/auth/gmail.modify"]
 
-def extract_metadata(message, msg_id):
-    metadata = {}
+def perform_action(service, msg_id):
+    actions = rules.get('actions')
+
+    for action in actions:
+        action_type  = action.get('type')
+        action_value = action.get('value')
+
+        match action_type:
+            case "mark_as_read":
+                service.users().messages().modify(
+                    userId='me',
+                    id=msg_id,
+                    body={'removeLabelIds': ['UNREAD']}
+                ).execute()
+            case "mark_as_unread":
+                service.users().messages().modify(
+                    userId='me',
+                    id=msg_id,
+                    body={'addLabelIds': ['UNREAD']}
+                ).execute()
+            case "move_to":
+                # build this as well
+                pass
+
+def check_condition(field_value, predicate, rule_value):
+    if predicate == "contains":
+        return rule_value.lower() in field_value.lower()
+    elif predicate == "does_not_contain":
+        return rule_value.lower() not in field_value.lower()
+    elif predicate == "equals":
+        return field_value.lower() == rule_value.lower()
+    elif predicate == "does_not_equal":
+        return field_value.lower() != rule_value.lower()
+    elif predicate in ["less_than_days", "greater_than_days", "less_than_months", "greater_than_months"]:
+        email_date = parse_email_date(field_value)
+        current_date = datetime.datetime.now(email_date.tzinfo)
+
+        # Calculate difference
+        if "days" in predicate:
+            diff_days = (current_date - email_date).days
+            if predicate == "less_than_days":
+                return diff_days < int(rule_value)
+            else:  # greater_than_days
+                return diff_days > int(rule_value)
+
+        elif "months" in predicate:
+            diff_months = (current_date.year - email_date.year) * 12 + (current_date.month - email_date.month)
+            if predicate == "less_than_months":
+                return diff_months < int(rule_value)
+            else:  # greater_than_months
+                return diff_months > int(rule_value)
+    else:
+        return False
+
+def evalute_rules(data):
+    predicate = rules.get('predicate')
+    results = []
+
+    for rule in rules.get('rules'):
+        rule_field     = rule.get('field')
+        rule_predicate = rule.get('predicate')
+        rule_value     = rule.get('value')
+
+        value = ''
+        match rule_field:
+            case "from":
+                value = data.get('From')
+            case "subject":
+                value = data.get('Subject')
+            case "message":
+                value = data.get('Snippet')
+            case "date_received":
+                value = data.get('Date')
+
+        results.append(check_condition(value, rule_predicate, rule_value))
+
+    if predicate == "all":
+        return all(results)
+    else:
+        return any(results)
+
+def extract_data(message, service):
+    # initially store the snippet of the message
+    data = {
+        'Snippet': message['snippet']
+    }
 
     headers = message['payload']['headers']
 
     for header in headers:
         if header['name'] in ["Subject", "From", "Date"]:
-            metadata.update({ header['name']: header['value']})
+            data.update({ header['name']: header['value']})
 
-    db.insert(msg_id, metadata['Subject'], metadata['From'], metadata['Date'])
-    return metadata
+    db.insert(message['id'], data['Subject'], data['From'], data['Date'], data['Snippet'])
+
+    # perform rule based action on the message metadata
+    if evalute_rules(data):
+        perform_action(service, msg_id=message.get('id'))
 
 def read_message(service, msg_id):
-    # fetch the metadata of message
-    message = service.users().messages().get(userId='me', id=msg_id, format='metadata').execute()
-    pprint.pp(extract_metadata(message, msg_id))
+    # fetch the data of message
+    message = service.users().messages().get(userId='me', id=msg_id, format='full').execute()
+    extract_data(message, service)
 
 def main():
   creds = None
@@ -52,12 +139,29 @@ def main():
 
   try:
     service = build("gmail", "v1", credentials=creds)
-    messages = service.users().messages().list(userId="me").execute()['messages']
 
-    for idx in range(5):
-        read_message(service, msg_id=messages[idx]['id'])
+    messages      = []
+    nextPageToken = None
+
+    while True:
+        resp = service.users().messages().list(userId="me", pageToken=nextPageToken).execute()
+        messages += resp.get('messages')
+        nextPageToken = resp.get('nextPageToken')
+
+        # parsing first message for testing
+        messages = [messages[0]]
+        break
+
+        if not nextPageToken:
+            break
+
+    read_message(service, msg_id=messages[0]['id'])
   except HttpError as error:
     print(f"An error occurred: {error}")
 
 if __name__ == "__main__":
-  main()
+    # load the rules file in memory
+    with open('rules.json') as r:
+        rules = json.load(r)
+
+    main()
