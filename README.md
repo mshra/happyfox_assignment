@@ -1,4 +1,4 @@
-# happyfox_assignment
+# mail_rule_engine
 
 # Steps
 
