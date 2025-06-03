@@ -14,7 +14,7 @@
     },
     {
       "field": "date_received",
-      "predicate": "less_than",
+      "predicate": "less_than_days",
       "value": "2"
     }
   ],

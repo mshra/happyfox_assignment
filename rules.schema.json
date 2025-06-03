@@ -19,11 +19,18 @@
         "properties": {
           "field": {
             "type": "string",
-            "enum": ["from", "to", "subject", "date_received"]
+            "enum": ["from", "subject", "date_received", "message"]
           },
           "predicate": {
             "type": "string",
-            "enum": ["contains", "not_equals", "less_than"]
+            "enum": [
+              "contains",
+              "does_not_contain",
+              "equals",
+              "not_equals",
+              "less_than_days",
+              "greater_than_days"
+            ]
           },
           "value": {
             "type": ["string", "number"]
