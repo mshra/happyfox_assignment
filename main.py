@@ -163,24 +163,25 @@ def main():
   try:
     service = build("gmail", "v1", credentials=creds)
 
-    messages      = []
+    message_ids      = []
     nextPageToken = None
 
     while True:
         resp = service.users().messages().list(userId="me", pageToken=nextPageToken).execute()
-        messages += resp.get('messages')
+        message_ids = resp.get('messages')
         nextPageToken = resp.get('nextPageToken')
-
-        # parsing first message for testing
-        messages = [messages[0]]
-        break
 
         if not nextPageToken:
             break
 
+        messages = []
+        batch = service.new_batch_http_request(callback=lambda req_id, resp, excp : messages.append(resp) if excp is None else None)
+        for message_id in message_ids:
+            request = service.users().messages().get(userId='me', id=message_id['id'], format='full')
+            batch.add(request)
+        batch.execute()
 
-    # read_message(service, msg_id=messages[0]['id'])
-    print(labels)
+        read_messages(service, messages)
   except HttpError as error:
     print(f"An error occurred: {error}")
 
