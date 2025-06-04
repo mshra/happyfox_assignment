@@ -3,6 +3,7 @@ import os.path
 import base64
 import datetime
 import json
+from email.utils import parsedate_to_datetime
 
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
@@ -34,8 +35,27 @@ def perform_action(service, msg_id):
                     body={'addLabelIds': ['UNREAD']}
                 ).execute()
             case "move_to":
-                # build this as well
-                pass
+                target_label = action_value.upper()
+                labels = service.users().labels().list(userId='me').execute().get('labels', [])
+
+                if any(label['name'].upper == target_label for label in labels):
+                    new_label = {
+                        'name': target_label,
+                        'labelListVisibility': 'labelShow',
+                        'messageListVisibility': 'show'
+                    }
+                    service.users().labels().create(userId='me', body=new_label).execute()
+
+                new_body = {'addLabelIds': [target_label]}
+
+                if target_label != 'INBOX':
+                    new_body['removeLabelIds'] = ['INBOX']
+
+                service.users().messages().modify(
+                    userId='me',
+                    id=msg_id,
+                    body=new_body
+                ).execute()
 
 def check_condition(field_value, predicate, rule_value):
     if predicate == "contains":
@@ -47,27 +67,26 @@ def check_condition(field_value, predicate, rule_value):
     elif predicate == "does_not_equal":
         return field_value.lower() != rule_value.lower()
     elif predicate in ["less_than_days", "greater_than_days", "less_than_months", "greater_than_months"]:
-        email_date = parse_email_date(field_value)
+        email_date = parsedate_to_datetime(field_value)
         current_date = datetime.datetime.now(email_date.tzinfo)
 
-        # Calculate difference
         if "days" in predicate:
             diff_days = (current_date - email_date).days
             if predicate == "less_than_days":
                 return diff_days < int(rule_value)
-            else:  # greater_than_days
+            else:
                 return diff_days > int(rule_value)
 
         elif "months" in predicate:
             diff_months = (current_date.year - email_date.year) * 12 + (current_date.month - email_date.month)
             if predicate == "less_than_months":
                 return diff_months < int(rule_value)
-            else:  # greater_than_months
+            else:
                 return diff_months > int(rule_value)
     else:
         return False
 
-def evalute_rules(data):
+def evalute_rules(data, service):
     predicate = rules.get('predicate')
     results = []
 
@@ -84,19 +103,25 @@ def evalute_rules(data):
                 value = data.get('Subject')
             case "message":
                 value = data.get('Snippet')
+
+                # if the value was not found in snippet of the email,
+                # then check the whole body of email for value.
+                if not check_condition(value, rule_predicate, rule_value):
+                    email_body = service.users().messages().get(userId='me', id=data.get('id'), format='full').execute()['payload']['parts'][0]['body']['data']
+                    value = str(base64.b64decode(email_body), encoding='utf-8')
             case "date_received":
                 value = data.get('Date')
 
         results.append(check_condition(value, rule_predicate, rule_value))
-
     if predicate == "all":
         return all(results)
     else:
         return any(results)
 
 def extract_data(message, service):
-    # initially store the snippet of the message
+    # initially store the snippet of the message and the id
     data = {
+        'id': message['id'],
         'Snippet': message['snippet']
     }
 
@@ -108,12 +133,10 @@ def extract_data(message, service):
 
     db.insert(message['id'], data['Subject'], data['From'], data['Date'], data['Snippet'])
 
-    # perform rule based action on the message metadata
-    if evalute_rules(data):
+    if evalute_rules(data, service):
         perform_action(service, msg_id=message.get('id'))
 
 def read_message(service, msg_id):
-    # fetch the data of message
     message = service.users().messages().get(userId='me', id=msg_id, format='full').execute()
     extract_data(message, service)
 
@@ -155,7 +178,9 @@ def main():
         if not nextPageToken:
             break
 
-    read_message(service, msg_id=messages[0]['id'])
+
+    # read_message(service, msg_id=messages[0]['id'])
+    print(labels)
   except HttpError as error:
     print(f"An error occurred: {error}")
 
