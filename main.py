@@ -1,4 +1,5 @@
 import pprint
+import time
 import os.path
 import base64
 import datetime
@@ -38,7 +39,8 @@ def perform_action(service, msg_id):
                 target_label = action_value.upper()
                 labels = service.users().labels().list(userId='me').execute().get('labels', [])
 
-                if any(label['name'].upper == target_label for label in labels):
+                # if the label is not present then create a new label
+                if not any(label['name'] == target_label for label in labels):
                     new_label = {
                         'name': target_label,
                         'labelListVisibility': 'labelShow',
@@ -136,9 +138,11 @@ def extract_data(message, service):
     if evalute_rules(data, service):
         perform_action(service, msg_id=message.get('id'))
 
-def read_message(service, msg_id):
-    message = service.users().messages().get(userId='me', id=msg_id, format='full').execute()
-    extract_data(message, service)
+def read_messages(service, messages):
+    for msg in messages:
+        msg_id = msg['id']
+        message = service.users().messages().get(userId='me', id=msg_id, format='full').execute()
+        extract_data(message, service)
 
 def main():
   creds = None
@@ -163,25 +167,30 @@ def main():
   try:
     service = build("gmail", "v1", credentials=creds)
 
-    message_ids      = []
-    nextPageToken = None
+    nextPageToken  = None
+    active_threads = []
+    page_count = 1
 
     while True:
         resp = service.users().messages().list(userId="me", pageToken=nextPageToken).execute()
         message_ids = resp.get('messages')
         nextPageToken = resp.get('nextPageToken')
 
-        if not nextPageToken:
-            break
-
         messages = []
         batch = service.new_batch_http_request(callback=lambda req_id, resp, excp : messages.append(resp) if excp is None else None)
+
         for message_id in message_ids:
             request = service.users().messages().get(userId='me', id=message_id['id'], format='full')
             batch.add(request)
+
         batch.execute()
 
         read_messages(service, messages)
+
+        if not nextPageToken:
+            break
+
+        time.sleep(0.1)
   except HttpError as error:
     print(f"An error occurred: {error}")
 
