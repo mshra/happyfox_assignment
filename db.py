@@ -21,6 +21,13 @@ def insert(msg_id: str, subject: str, from_email: str, date: str, snippet: str):
         )
         conn.commit()
 
+def batch_insert(emails: list[tuple[str, str, str, str, str]]):
+    cur.executemany(
+        "INSERT or IGNORE INTO emails (msg_id, subject, from_email, date, snippet) VALUES (?, ?, ?, ?, ?)",
+        emails
+    )
+    conn.commit()
+
 def get(msg_id: Optional[str] = None):
     if msg_id is None:
         return cur.execute("SELECT * FROM emails").fetchall()
