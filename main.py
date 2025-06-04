@@ -5,6 +5,7 @@ import base64
 import datetime
 import json
 from email.utils import parsedate_to_datetime
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
@@ -120,29 +121,39 @@ def evalute_rules(data, service):
     else:
         return any(results)
 
-def extract_data(message, service):
-    # initially store the snippet of the message and the id
-    data = {
-        'id': message['id'],
-        'Snippet': message['snippet']
-    }
-
-    headers = message['payload']['headers']
-
-    for header in headers:
-        if header['name'] in ["Subject", "From", "Date"]:
-            data.update({ header['name']: header['value']})
-
-    db.insert(message['id'], data['Subject'], data['From'], data['Date'], data['Snippet'])
-
-    if evalute_rules(data, service):
-        perform_action(service, msg_id=message.get('id'))
+def process_message(msg, service):
+    if evalute_rules(msg, service):
+        perform_action(service, msg['id'])
 
 def read_messages(service, messages):
+    extract_header = lambda headers, name: next((h['value'] for h in headers if h['name'] == name),'')
+
+    msg_data   = []
+    db_records = []
+
     for msg in messages:
-        msg_id = msg['id']
-        message = service.users().messages().get(userId='me', id=msg_id, format='full').execute()
-        extract_data(message, service)
+        id         = msg['id']
+        snippet    = msg['snippet']
+        subject    = extract_header(msg['payload']['headers'], 'Subject')
+        from_email = extract_header(msg['payload']['headers'], 'From')
+        date       = extract_header(msg['payload']['headers'], 'Date')
+
+        db_records.append((id, subject, from_email, date, snippet))
+        msg_data.append({
+            'id': id,
+            'Subject': subject,
+            'From': from_email,
+            'Date': date,
+            'Snippet': snippet
+        })
+
+    db.batch_insert(db_records)
+
+    with ThreadPoolExecutor(max_workers=5) as exec:
+        future_to_message = {
+            exec.submit(process_message, msg, service): msg
+            for msg in msg_data
+        }
 
 def main():
   creds = None
@@ -168,29 +179,27 @@ def main():
     service = build("gmail", "v1", credentials=creds)
 
     nextPageToken  = None
-    active_threads = []
-    page_count = 1
 
+    failed = []
     while True:
-        resp = service.users().messages().list(userId="me", pageToken=nextPageToken).execute()
+        resp = service.users().messages().list(userId="me", labelIds=['INBOX'], pageToken=nextPageToken).execute()
         message_ids = resp.get('messages')
         nextPageToken = resp.get('nextPageToken')
 
         messages = []
-        batch = service.new_batch_http_request(callback=lambda req_id, resp, excp : messages.append(resp) if excp is None else None)
+        batch = service.new_batch_http_request(callback=lambda req_id, resp, excp : messages.append(resp) if excp is None else failed.append(excp))
 
         for message_id in message_ids:
-            request = service.users().messages().get(userId='me', id=message_id['id'], format='full')
+            request = service.users().messages().get(userId='me', id=message_id['id'], format='metadata')
             batch.add(request)
 
         batch.execute()
-
         read_messages(service, messages)
 
         if not nextPageToken:
             break
 
-        time.sleep(0.1)
+        time.sleep(1) # to avoid overwhelming the api
   except HttpError as error:
     print(f"An error occurred: {error}")
 
