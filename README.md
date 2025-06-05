@@ -42,3 +42,4 @@ python main.py
 - GMAIL API quota and rate limiting
 - No exception and API error handling
 - No type validations
+- Fields are case sensitive
