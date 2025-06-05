@@ -1,8 +1,8 @@
 # Mail Rule Engine
 
-A gmail rule engine that processes emails based and perform optional automated actions based on rules
+A gmail rule engine that processes emails and performs automated actions based on rules
 
-# Installation
+## Installation
 
 1. Clone the repository
 
@@ -36,3 +36,9 @@ Edit `rules.json` to define your email processing rules.
 ```bash
 python main.py
 ```
+
+## Limitations
+
+- GMAIL API quota and rate limiting
+- No exception and API error handling
+- No type validations
