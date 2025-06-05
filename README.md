@@ -1,11 +1,38 @@
-# mail_rule_engine
+# Mail Rule Engine
 
-# Steps
+A gmail rule engine that processes emails based and perform optional automated actions based on rules
 
-- [x] Fetch a list of emails from inbox
-- [x] Database table representation to store these emails
-- [x] Another script that can process emails based on some rules and take some actions on them using REST API(rules need to be stored in a json file)
+# Installation
 
-# Handling Optimization and Scalability
+1. Clone the repository
 
-- [ ] Batch Insert instead
+```bash
+git clone https://github.com/mshra/mail_rule_engine
+cd mail_rule_engine
+```
+
+2. Make a virtual environment & install dependencies
+
+```bash
+python python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+```
+
+3. Google API Setup
+
+- Go to [google cloud console](https://console.cloud.google.com/)
+- Create or select an existing project
+- Enable the Gmail API
+- Create desktop application type credentials
+- Download and save the credentials.json in the project root
+
+4. Configure rules
+
+Edit `rules.json` to define your email processing rules.
+
+5. Run the application
+
+```bash
+python main.py
+```
