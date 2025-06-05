@@ -1,11 +1,10 @@
-import pprint
 import time
 import os.path
 import base64
 import datetime
 import json
 from email.utils import parsedate_to_datetime
-from concurrent.futures import ThreadPoolExecutor, as_completed
+import random
 
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
@@ -16,7 +15,7 @@ import db
 
 SCOPES = ["https://www.googleapis.com/auth/gmail.modify"]
 
-def perform_action(service, msg_id):
+def perform_action(service, msg_id, labels):
     actions = rules.get('actions')
 
     for action in actions:
@@ -38,7 +37,6 @@ def perform_action(service, msg_id):
                 ).execute()
             case "move_to":
                 target_label = action_value.upper()
-                labels = service.users().labels().list(userId='me').execute().get('labels', [])
 
                 # if the label is not present then create a new label
                 if not any(label['name'] == target_label for label in labels):
@@ -91,7 +89,6 @@ def check_condition(field_value, predicate, rule_value):
 
 def evalute_rules(data, service):
     predicate = rules.get('predicate')
-    results = []
 
     for rule in rules.get('rules'):
         rule_field     = rule.get('field')
@@ -115,21 +112,19 @@ def evalute_rules(data, service):
             case "date_received":
                 value = data.get('Date')
 
-        results.append(check_condition(value, rule_predicate, rule_value))
-    if predicate == "all":
-        return all(results)
-    else:
-        return any(results)
+        condition_status = check_condition(value, rule_predicate, rule_value)
 
-def process_message(msg, service):
-    if evalute_rules(msg, service):
-        perform_action(service, msg['id'])
+        # early fallbacks
+        if predicate == 'any' and condition_status:     return True
+        if predicate == 'all' and not condition_status: return False
 
-def read_messages(service, messages):
-    extract_header = lambda headers, name: next((h['value'] for h in headers if h['name'] == name),'')
+    return False if predicate == "any" else True
 
-    msg_data   = []
+def read_messages(service, messages, labels):
     db_records = []
+
+    def extract_header(headers, name):
+        return next((h['value'] for h in headers if h['name'] == name), '')
 
     for msg in messages:
         id         = msg['id']
@@ -139,21 +134,19 @@ def read_messages(service, messages):
         date       = extract_header(msg['payload']['headers'], 'Date')
 
         db_records.append((id, subject, from_email, date, snippet))
-        msg_data.append({
+
+        msg = {
             'id': id,
             'Subject': subject,
             'From': from_email,
             'Date': date,
             'Snippet': snippet
-        })
+        }
+
+        if evalute_rules(msg, service):
+            perform_action(service, msg['id'], labels)
 
     db.batch_insert(db_records)
-
-    with ThreadPoolExecutor(max_workers=5) as exec:
-        future_to_message = {
-            exec.submit(process_message, msg, service): msg
-            for msg in msg_data
-        }
 
 def main():
   creds = None
@@ -178,6 +171,9 @@ def main():
   try:
     service = build("gmail", "v1", credentials=creds)
 
+    # prefetch labels
+    labels = service.users().labels().list(userId='me').execute().get('labels', [])
+
     nextPageToken  = None
 
     failed = []
@@ -194,12 +190,12 @@ def main():
             batch.add(request)
 
         batch.execute()
-        read_messages(service, messages)
+        read_messages(service, messages, labels)
 
         if not nextPageToken:
             break
 
-        time.sleep(1) # to avoid overwhelming the api
+        time.sleep(random.uniform(0.5, 1.5)) # to avoid overwhelming the api
   except HttpError as error:
     print(f"An error occurred: {error}")
 
