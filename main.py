@@ -45,6 +45,7 @@ def perform_action(service, msg_id, labels, rules):
                         'labelListVisibility': 'labelShow',
                         'messageListVisibility': 'show'
                     }
+                    labels.append(new_label)
                     service.users().labels().create(userId='me', body=new_label).execute()
 
                 new_body = {'addLabelIds': [target_label]}
@@ -173,17 +174,18 @@ def main():
 
     # prefetch labels
     labels = service.users().labels().list(userId='me').execute().get('labels', [])
+    print(labels)
+    return
 
     nextPageToken  = None
 
-    failed = []
     while True:
         resp = service.users().messages().list(userId="me", labelIds=['INBOX'], pageToken=nextPageToken).execute()
         message_ids = resp.get('messages')
         nextPageToken = resp.get('nextPageToken')
 
         messages = []
-        batch = service.new_batch_http_request(callback=lambda req_id, resp, excp : messages.append(resp) if excp is None else failed.append(excp))
+        batch = service.new_batch_http_request(callback=lambda req_id, resp, excp : messages.append(resp) if excp is None else None)
 
         for message_id in message_ids:
             request = service.users().messages().get(userId='me', id=message_id['id'], format='metadata')
@@ -195,7 +197,7 @@ def main():
         if not nextPageToken:
             break
 
-        time.sleep(random.uniform(0.5, 1.5)) # to avoid overwhelming the api
+        time.sleep(random.uniform(0.5, 1.5))
   except HttpError as error:
     print(f"An error occurred: {error}")
 
