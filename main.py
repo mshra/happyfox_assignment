@@ -174,8 +174,6 @@ def main():
 
     # prefetch labels
     labels = service.users().labels().list(userId='me').execute().get('labels', [])
-    print(labels)
-    return
 
     nextPageToken  = None
 
