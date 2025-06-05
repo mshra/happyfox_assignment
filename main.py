@@ -87,7 +87,7 @@ def check_condition(field_value, predicate, rule_value):
     else:
         return False
 
-def evalute_rules(data, service):
+def evaluate_rules(data, service):
     predicate = rules.get('predicate')
 
     for rule in rules.get('rules'):
@@ -143,7 +143,7 @@ def read_messages(service, messages, labels):
             'Snippet': snippet
         }
 
-        if evalute_rules(msg, service):
+        if evaluate_rules(msg, service):
             perform_action(service, msg['id'], labels)
 
     db.batch_insert(db_records)
