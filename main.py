@@ -17,6 +17,7 @@ SCOPES = ["https://www.googleapis.com/auth/gmail.modify"]
 
 def perform_action(service, msg_id, labels, rules):
     actions = rules.get('actions')
+    requests = []
 
     for action in actions:
         action_type  = action.get('type')
@@ -24,17 +25,19 @@ def perform_action(service, msg_id, labels, rules):
 
         match action_type:
             case "mark_as_read":
-                service.users().messages().modify(
+                request = service.users().messages().modify(
                     userId='me',
                     id=msg_id,
                     body={'removeLabelIds': ['UNREAD']}
-                ).execute()
+                )
+                requests.append(request)
             case "mark_as_unread":
-                service.users().messages().modify(
+                request = service.users().messages().modify(
                     userId='me',
                     id=msg_id,
                     body={'addLabelIds': ['UNREAD']}
-                ).execute()
+                )
+                requests.append(request)
             case "move_to":
                 target_label = action_value.upper()
 
@@ -53,11 +56,14 @@ def perform_action(service, msg_id, labels, rules):
                 if target_label != 'INBOX':
                     new_body['removeLabelIds'] = ['INBOX']
 
-                service.users().messages().modify(
+                request = service.users().messages().modify(
                     userId='me',
                     id=msg_id,
                     body=new_body
-                ).execute()
+                )
+                requests.append(request)
+
+    return requests
 
 def check_condition(field_value, predicate, rule_value):
     if predicate == "contains":
@@ -123,6 +129,7 @@ def evaluate_rules(data, service, rules):
 
 def read_messages(service, messages, labels):
     db_records = []
+    batch = service.new_batch_http_request(callback=lambda req_id, resp, excp : None)
 
     def extract_header(headers, name):
         return next((h['value'] for h in headers if h['name'] == name), '')
@@ -145,8 +152,12 @@ def read_messages(service, messages, labels):
         }
 
         if evaluate_rules(msg, service, rules):
-            perform_action(service, msg['id'], labels, rules)
+            action_requests = perform_action(service, msg['id'], labels, rules)
+            for request in action_requests:
+                batch.add(request)
 
+    if batch._requests:
+        batch.execute()
     db.batch_insert(db_records)
 
 def main():
