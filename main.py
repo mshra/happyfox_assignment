@@ -1,5 +1,6 @@
 import time
 import os.path
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import base64
 import datetime
 import json
@@ -127,34 +128,43 @@ def evaluate_rules(data, service, rules):
 
     return False if predicate == "any" else True
 
+def process_message(msg, db_records, batch, service, labels):
+    def extract_header(headers, name):
+        return next((h['value'] for h in headers if h['name'] == name), '')
+
+    id         = msg['id']
+    snippet    = msg['snippet']
+    subject    = extract_header(msg['payload']['headers'], 'Subject')
+    from_email = extract_header(msg['payload']['headers'], 'From')
+    date       = extract_header(msg['payload']['headers'], 'Date')
+
+    db_records.append((id, subject, from_email, date, snippet))
+
+    msg = {
+        'id': id,
+        'Subject': subject,
+        'From': from_email,
+        'Date': date,
+        'Snippet': snippet
+    }
+
+    if evaluate_rules(msg, service, rules):
+        action_requests = perform_action(service, msg['id'], labels, rules)
+        for request in action_requests:
+            batch.add(request)
+
+
 def read_messages(service, messages, labels):
     db_records = []
     batch = service.new_batch_http_request(callback=lambda req_id, resp, excp : None)
 
-    def extract_header(headers, name):
-        return next((h['value'] for h in headers if h['name'] == name), '')
-
-    for msg in messages:
-        id         = msg['id']
-        snippet    = msg['snippet']
-        subject    = extract_header(msg['payload']['headers'], 'Subject')
-        from_email = extract_header(msg['payload']['headers'], 'From')
-        date       = extract_header(msg['payload']['headers'], 'Date')
-
-        db_records.append((id, subject, from_email, date, snippet))
-
-        msg = {
-            'id': id,
-            'Subject': subject,
-            'From': from_email,
-            'Date': date,
-            'Snippet': snippet
+    with ThreadPoolExecutor(max_workers=5) as executor:
+        future_message_processing = {
+            executor.submit(process_message, msg, db_records, batch, service, labels): msg
+            for msg in messages
         }
 
-        if evaluate_rules(msg, service, rules):
-            action_requests = perform_action(service, msg['id'], labels, rules)
-            for request in action_requests:
-                batch.add(request)
+    for _ in as_completed(future_message_processing): pass
 
     if batch._requests:
         batch.execute()
