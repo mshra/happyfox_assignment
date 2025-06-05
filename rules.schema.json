@@ -29,7 +29,9 @@
               "equals",
               "not_equals",
               "less_than_days",
-              "greater_than_days"
+              "greater_than_days",
+              "less_than_months",
+              "greater_than_months"
             ]
           },
           "value": {
