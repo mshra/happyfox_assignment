@@ -15,7 +15,7 @@ import db
 
 SCOPES = ["https://www.googleapis.com/auth/gmail.modify"]
 
-def perform_action(service, msg_id, labels):
+def perform_action(service, msg_id, labels, rules):
     actions = rules.get('actions')
 
     for action in actions:
@@ -87,7 +87,7 @@ def check_condition(field_value, predicate, rule_value):
     else:
         return False
 
-def evaluate_rules(data, service):
+def evaluate_rules(data, service, rules):
     predicate = rules.get('predicate')
 
     for rule in rules.get('rules'):
@@ -143,8 +143,8 @@ def read_messages(service, messages, labels):
             'Snippet': snippet
         }
 
-        if evaluate_rules(msg, service):
-            perform_action(service, msg['id'], labels)
+        if evaluate_rules(msg, service, rules):
+            perform_action(service, msg['id'], labels, rules)
 
     db.batch_insert(db_records)
 
