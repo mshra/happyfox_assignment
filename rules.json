@@ -1,6 +1,6 @@
 {
   "$schema": "./rules.schema.json",
-  "predicate": "all",
+  "predicate": "any",
   "rules": [
     {
       "field": "from",
@@ -10,7 +10,7 @@
     {
       "field": "subject",
       "predicate": "contains",
-      "value": "Interview"
+      "value": "Email"
     },
     {
       "field": "date_received",
@@ -19,7 +19,7 @@
     }
   ],
   "actions": [
-    { "type": "move_to", "value": "inbox" },
+    { "type": "move_to", "value": "spam" },
     { "type": "mark_as_read", "value": "" }
   ]
 }
