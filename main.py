@@ -1,6 +1,6 @@
 import time
 import os.path
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor, wait
 import base64
 import datetime
 import json
@@ -164,7 +164,7 @@ def read_messages(service, messages, labels):
             for msg in messages
         }
 
-    for _ in as_completed(future_message_processing): pass
+    wait(future_message_processing) # wait for the threads to completely process messages
 
     if batch._requests:
         batch.execute()
