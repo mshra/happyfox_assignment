@@ -37,6 +37,12 @@ Edit `rules.json` to define your email processing rules.
 python main.py
 ```
 
+6. To run the test cases
+
+```bash
+pytest
+```
+
 ## Limitations
 
 - GMAIL API quota and rate limiting
